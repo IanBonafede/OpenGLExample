@@ -1,7 +1,8 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\shaders"
   ],
-  "SelectedNode": "\\TexturedTriangle.py",
+  "SelectedNode": "\\main.py",
   "PreviewInSolutionExplorer": false
 }
