@@ -6,6 +6,109 @@ import ctypes
 from OpenGL.GL.shaders import compileProgram, compileShader
 import pyrr
 
+
+class Mesh:
+
+    def __init__(self, filename):
+        # x, y, z, s, t, nx, ny, nz
+        vertices = self.loadMesh(filename)
+        self.vertex_count = len(vertices)//8
+        vertices = np.array(vertices, dtype=np.float32)
+
+        self.vao = glGenVertexArrays(1) # Vertex Attribute Array
+        glBindVertexArray(self.vao)
+
+        #vertices
+        self.vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+
+        #position
+        glEnableVertexAttribArray(0) 
+        # 0 = position, 3 points in attrib, float type, normalize numbers?, stride = 5#s x 4 bytes = 20, offset for first point 0 
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 32, ctypes.c_void_p(0)) 
+
+        #texture
+        glEnableVertexAttribArray(1) 
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 32, ctypes.c_void_p(12))
+
+    def loadMesh(self, filename:str) -> list[float]:
+
+        v = []
+        vt = []
+        vn = []
+
+        vertices = []
+
+        with open(filename, "r") as file:
+
+            line = file.readline()
+
+            while line:
+                words = line.split(" ")
+                if(words[0] == "v"):
+                    v.append(self.read_vertex_data(words))
+                elif(words[0] == "vt"):
+                    vt.append(self.read_texcoord_data(words))
+                elif(words[0] == "vn"):
+                    vn.append(self.read_normal_data(words))
+                elif(words[0] == "f"):
+                    vn.append(self.read_face_data(words, v, vt, vn, vertices))
+                line = file.readline()
+
+        return vertices
+
+    def read_vertex_data(self, words: list[str]) -> list[float]:
+
+        return [
+            float(words[1]),
+            float(words[2]),
+            float(words[3])
+            ]
+    
+    def read_texcoord_data(self, words: list[str]) -> list[float]:
+
+        return [
+            float(words[1]),
+            float(words[2])
+            ]
+
+    def read_normal_data(self, words: list[str]) -> list[float]:
+
+        return [
+            float(words[1]),
+            float(words[2]),
+            float(words[3])
+            ]
+
+    def read_face_data(self, words: list[str], v: list[list[float]], vt: list[list[float]], vn: list[list[float]], vertices: list[float]) -> None:
+        triangelCount = len(words) - 3
+
+        for i in range(triangelCount):
+            self.make_corner(words[1], v, vt, vn, vertices)
+            self.make_corner(words[2+i], v, vt, vn, vertices)
+            self.make_corner(words[3+i], v, vt, vn, vertices)
+
+        
+    def make_corner(self, corner_description: str, v: list[list[float]], vt: list[list[float]], vn: list[list[float]], vertices: list[float]):
+        v_vt_vn = corner_description.split("/")
+
+        for element in v[int(v_vt_vn[0]) - 1]:
+            vertices.append(element)
+        for element in vt[int(v_vt_vn[1]) - 1]:
+            vertices.append(element)
+        for element in vn[int(v_vt_vn[2]) - 1]:
+            vertices.append(element)
+
+    def destroy(self):
+
+        glDeleteVertexArrays(1, (self.vao,))
+        glDeleteBuffers(1, (self.vbo,))
+
+
+
+
+
 class App:
 
     def __init__(self):
@@ -33,7 +136,7 @@ class App:
             position = [0,0,-3], 
             eulers=[0,0,0]
             )
-        self.cube_mesh = CubeMesh()
+        self.mesh = Mesh("meshes/cube.obj")
         self.wood_texture = Material("gfx/wood.jpg")
 
         #initialize our projection view using pyrr
@@ -109,8 +212,8 @@ class App:
                 )
             #upload transform
             glUniformMatrix4fv(self.modelMatrixLocation, 1, GL_FALSE, model_transform)
-            glBindVertexArray(self.cube_mesh.vao) # prepare vertex
-            glDrawArrays(GL_TRIANGLES, 0, self.cube_mesh.vertex_count) #draw arrays (triangles, first point, # points)
+            glBindVertexArray(self.mesh.vao) # prepare vertex
+            glDrawArrays(GL_TRIANGLES, 0, self.mesh.vertex_count) #draw arrays (triangles, first point, # points)
 
             pg.display.flip()
 
@@ -118,8 +221,10 @@ class App:
             self.clock.tick(60)
         self.quit()
 
+    
+
     def quit(self):
-        self.cube_mesh.destroy()
+        self.mesh.destroy()
         self.wood_texture.destroy()
         glDeleteProgram(self.shader)
         pg.quit()
@@ -130,90 +235,6 @@ class Cube:
 
         self.position = np.array(position, dtype=np.float32)
         self.eulers = np.array(eulers, dtype=np.float32)
-
-class CubeMesh:
-
-    def __init__(self):
-
-        # x, y, z, s, t
-        self.vertices = (
-            -0.5, -0.5, -0.5, 0, 0,
-             0.5, -0.5, -0.5, 1, 0,
-             0.5,  0.5, -0.5, 1, 1,
-
-             0.5,  0.5, -0.5, 1, 1,
-            -0.5,  0.5, -0.5, 0, 1,
-            -0.5, -0.5, -0.5, 0, 0,
-
-            -0.5, -0.5,  0.5, 0, 0,
-             0.5, -0.5,  0.5, 1, 0,
-             0.5,  0.5,  0.5, 1, 1,
-
-             0.5,  0.5,  0.5, 1, 1,
-            -0.5,  0.5,  0.5, 0, 1,
-            -0.5, -0.5,  0.5, 0, 0,
-
-            -0.5,  0.5,  0.5, 1, 0,
-            -0.5,  0.5, -0.5, 1, 1,
-            -0.5, -0.5, -0.5, 0, 1,
-
-            -0.5, -0.5, -0.5, 0, 1,
-            -0.5, -0.5,  0.5, 0, 0,
-            -0.5,  0.5,  0.5, 1, 0,
-
-             0.5,  0.5,  0.5, 1, 0,
-             0.5,  0.5, -0.5, 1, 1,
-             0.5, -0.5, -0.5, 0, 1,
-
-             0.5, -0.5, -0.5, 0, 1,
-             0.5, -0.5,  0.5, 0, 0,
-             0.5,  0.5,  0.5, 1, 0,
-
-            -0.5, -0.5, -0.5, 0, 1,
-             0.5, -0.5, -0.5, 1, 1,
-             0.5, -0.5,  0.5, 1, 0,
-
-             0.5, -0.5,  0.5, 1, 0,
-            -0.5, -0.5,  0.5, 0, 0,
-            -0.5, -0.5, -0.5, 0, 1,
-
-            -0.5,  0.5, -0.5, 0, 1,
-             0.5,  0.5, -0.5, 1, 1,
-             0.5,  0.5,  0.5, 1, 0,
-
-             0.5,  0.5,  0.5, 1, 0,
-            -0.5,  0.5,  0.5, 0, 0,
-            -0.5,  0.5, -0.5, 0, 1
-
-        )
-
-        self.vertices = np.array(self.vertices, dtype=np.float32)
-
-        self.vertex_count = len(self.vertices) // 5
-
-        self.vao = glGenVertexArrays(1) # Vertex Attribute Array
-        glBindVertexArray(self.vao)
-        self.vbo = glGenBuffers(1)
-        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
-        glBufferData(GL_ARRAY_BUFFER, self.vertices.nbytes, self.vertices, GL_STATIC_DRAW)
-        #glBufferData( GL_ARRAY_BUFFER, sizeof( self.vertices[0] * 3 ), &vertices[0], GL_STATIC_DRAW );
-
-        #enable attribute
-        glEnableVertexAttribArray(0) 
-        #attrib = position
-        #define attribute
-        # 0 = position, 3 points in attrib, float type, normalize numbers?, stride = 5#s x 4 bytes = 20, offset for first point 0 
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 20, ctypes.c_void_p(0)) 
-
-
-        glEnableVertexAttribArray(1) 
-        #attrib = coordinate
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 20, ctypes.c_void_p(12))
-
-    def destroy(self):
-
-        glDeleteVertexArrays(1, (self.vao,))
-        glDeleteBuffers(1, (self.vbo,))
 
 
 
